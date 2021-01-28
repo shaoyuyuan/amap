@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<title></title>
+	<link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+	 <script src="https://webapi.amap.com/maps?v=1.4.15&key=您的高德key&plugin=AMap.PolyEditor&plugin=AMap.Geocoder"></script>
+	 <script src="https://a.amap.com/jsapi_demos/static/demo-center/js/demoutils.js"></script>
+	<style>
+        html,
+        body,
+        #container {
+          width: 100%;
+          height: 100%;
+        }
+        .half {
+        	width: 50%;!important;
+        }
+    </style>
+</head>
+<body>
+
+	<div id="container"></div> 
+	<div class="input-card" style="top: 0;">
+	    <label style='color:grey'>地理编码，根据地址获取经纬度坐标</label>
+	    <div class="input-item">
+	            <div class="input-item-prepend"><span class="input-item-text" >地址</span></div>
+	            <input id='address' type="text" value='北京市朝阳区阜荣街10号' >
+	    </div>
+	    <div class="input-item">
+	            <div class="input-item-prepend"><span class="input-item-text">经纬度</span></div>
+	            <input id='lnglat' disabled type="text">
+	    </div>
+	    <input id="geo" type="button" class="btn" value="地址 -> 经纬度" />
+	    <button class="btn" onclick="openEditor()" style="margin-bottom: 5px">开始编辑</button> 
+   		<button class="btn" onclick="polyEditor.close()">结束编辑</button> 
+   		<button class="btn" onclick="clearGon()">清除多边形</button>
+	</div>
+
+</body>
+<script>
+    var map = new AMap.Map('container', {
+        zoom:11, //初始化地图层级
+        center:  [116.400274, 39.905812], //初始化地图中心点
+    });
+
+
+	//开启多边形编辑
+	function openEditor() {
+		if(path.length > 0){
+			polyEditor.open();
+		} else {
+			//开启绘制多边形
+			log.info('先绘制多边形')
+			initMap();
+		}
+	}
+
+    //矢量图坐标组
+    var path = [];
+
+    function initMap() {
+    	// body...
+	    //通过插件方式引入 AMap.MouseTool 工具
+		map.plugin(["AMap.MouseTool"],function(){
+		   //在地图中添加MouseTool插件
+		    var mouseTool = new AMap.MouseTool(map);
+
+		    //用鼠标工具画多边形
+		    var drawPolygon = mouseTool.polygon();
+
+		    //添加事件
+		    AMap.event.addListener( mouseTool,'draw',function(e){
+		    	//清除绘制的多边形
+				mouseTool.close(true);
+		    	//整理坐标点，编辑图形
+		    	setPath(e.obj.getPath());
+		    });
+
+		});
+    }
+
+	//整理坐标点，编辑图形
+	function setPath(arr) {
+
+		for(j = 0,len=arr.length; j < len; j++) {
+    		points = [arr[j]['lng'], arr[j]['lat']];
+    		path.push(points);
+		}
+		//开启地图编辑
+		updatePath(path);
+	}
+
+	//编辑多边形对象
+	var polyEditor;
+
+	//开启地图编辑
+	function updatePath(path) {
+	    var polygon = new AMap.Polygon({
+	        path: path,
+	        strokeColor: "#FF33FF", 
+	        strokeWeight: 6,
+	        strokeOpacity: 0.2,
+	        fillOpacity: 0.4,
+	        fillColor: '#1791fc',
+	        zIndex: 50,
+	    })
+
+	    map.add(polygon)
+	    // 缩放地图到合适的视野级别
+	    map.setFitView([ polygon ])
+
+	    polyEditor = new AMap.PolyEditor(map, polygon);
+
+	    polyEditor.open();
+
+	    polyEditor.on('addnode', function(event) {
+	        log.info('触发事件：addnode')
+	    })
+
+	    polyEditor.on('adjust', function(event) {
+	        console.log('你动我了') ;
+	    })
+
+	    polyEditor.on('removenode', function(event) {
+	        log.info('触发事件：removenode')
+	    })
+
+	    polyEditor.on('end', function(event) {
+	        // event.target 即为编辑后的多边形对象
+	    	//多边形的坐标
+	    	console.log(event.target.getPath())
+	    })
+
+	}
+
+
+	//删除多边形
+	function clearGon() {
+		console.log('my in');
+		//清除编辑的坐标点
+		path = [];
+		map.clearMap();
+		console.log('清除了？');
+	}
+
+ 	var geocoder = new AMap.Geocoder({
+        // city: "010", //城市设为北京，默认：“全国”
+    });
+    
+    var marker = new AMap.Marker();
+    
+    function geoCode() {
+        var address  = document.getElementById('address').value;
+        geocoder.getLocation(address, function(status, result) {
+            if (status === 'complete'&&result.geocodes.length) {
+                var lnglat = result.geocodes[0].location
+                document.getElementById('lnglat').value = lnglat;
+                marker.setPosition(lnglat);
+                map.add(marker);
+                map.setFitView(marker);
+                //点是否在多边形内
+    			compute();
+            }else{
+                log.error('根据地址查询位置失败');
+            }
+        });
+    }
+    document.getElementById("geo").onclick = geoCode;
+
+    document.getElementById('address').onkeydown = function(e) {
+        if (e.keyCode === 13) {
+            geoCode();
+            return false;
+        }
+        return true;
+    };
+
+    //点是否在多边形内
+ 	function compute(){
+        var point = marker.getPosition();
+        var isPointInRing = AMap.GeometryUtil.isPointInRing(point,path);
+        marker.setLabel({
+            content:isPointInRing?'内部':'外部',
+            offset:new AMap.Pixel(20,0)
+        });
+    }
+
+    // 为marker绑定拖拽事件
+    marker.on('dragging',compute)
+    map.setFitView();
+
+</script>
+</html>
